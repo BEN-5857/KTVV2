@@ -42,7 +42,8 @@
   .controls .btn{ flex:1; padding:12px 8px; font-size:13px; }
   .hint{ font-size:12px; color:var(--text-dim); line-height:1.6; }
   .site-embed{ margin-top:10px; }
-  iframe.point-song{ width:100%; height:340px; border:1px solid var(--line); border-radius:12px; }
+  iframe.point-song{ width:100%; height:62vh; min-height:420px; border:1px solid var(--line); border-radius:12px; }
+  iframe.point-song:fullscreen{ height:100vh; min-height:0; border-radius:0; }
 </style>
 </head>
 <body>
@@ -55,7 +56,6 @@
   <div class="tabbar" id="tabbar">
     <button data-tab="search" class="active">🔍 找歌</button>
     <button data-tab="site">🎶 點歌王</button>
-    <button data-tab="queue">📋 待播清單</button>
   </div>
 
   <!-- 搜尋 YouTube -->
@@ -76,17 +76,23 @@
   <div class="panel" id="panel-site">
     <div class="section-title">台灣點歌王</div>
     <p class="hint">直接查詢最新歌單；找到想唱的歌後，用它的「分享」功能複製歌曲網址，回來貼上加入待播清單。</p>
-    <a class="btn" style="width:100%;" href="https://song.corp.com.tw" target="_blank" rel="noopener">開啟台灣點歌王（新分頁）</a>
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
+      <a class="btn" style="flex:1;" href="https://song.corp.com.tw" target="_blank" rel="noopener">開新分頁</a>
+      <button class="btn gold" id="site-fullscreen-btn" style="flex:1;">⛶ 全螢幕瀏覽</button>
+    </div>
     <div class="site-embed">
-      <iframe class="point-song" src="https://song.corp.com.tw" loading="lazy"></iframe>
-      <p class="hint">＊若上方空白，代表該網站不允許嵌入，請改用上面的按鈕開新分頁瀏覽。</p>
+      <iframe class="point-song" id="site-iframe" src="https://song.corp.com.tw" loading="lazy"></iframe>
+      <p class="hint">＊畫面偏矮是因為該網站下方有自己的廣告列，這是對方網站的設計，無法從我們這邊移除；按「全螢幕瀏覽」可以看到更完整的內容，或直接開新分頁瀏覽。</p>
     </div>
   </div>
 
-  <!-- 待播清單 -->
-  <div class="panel" id="panel-queue">
-    <div class="section-title">待播清單</div>
-    <div id="queue-list"></div>
+  <!-- 常駐待播清單（不會被歌單分頁遮住，含已唱過的歷史紀錄） -->
+  <div class="card queue-panel" style="margin-top:14px;">
+    <div class="section-title" style="margin-top:0; display:flex; justify-content:space-between; align-items:center;">
+      <span>📋 待播 / 播放紀錄</span>
+      <span class="hint" style="margin:0;">已唱過的歌會保留，可點選重唱</span>
+    </div>
+    <div id="queue-list" style="max-height:280px; overflow-y:auto; padding-right:4px;"></div>
   </div>
 
   <!-- 手動貼上加入 -->
@@ -116,6 +122,7 @@
   </div>
   <div class="controls">
     <button class="btn ghost" id="btn-playpause">⏸ 暫停</button>
+    <button class="btn gold" id="btn-repeat">🔁 重唱</button>
     <button class="btn magenta" id="btn-next">⏭ 下一首</button>
   </div>
 </div>
@@ -133,7 +140,7 @@ tabbar.addEventListener('click', (e) => {
   const btn = e.target.closest('button[data-tab]');
   if (!btn) return;
   [...tabbar.children].forEach(b => b.classList.toggle('active', b === btn));
-  ['search','site','queue'].forEach(name => {
+  ['search','site'].forEach(name => {
     document.getElementById('panel-' + name).classList.toggle('active', name === btn.dataset.tab);
   });
 });
@@ -183,7 +190,7 @@ document.getElementById('add-btn').addEventListener('click', async () => {
     document.getElementById('paste-url').value = '';
     document.getElementById('manual-title').value = '';
     document.getElementById('manual-artist').value = '';
-    tabbar.querySelector('[data-tab="queue"]').click();
+    document.querySelector('.queue-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch (e) {
     alert('加入失敗：' + e.message);
   } finally {
@@ -212,19 +219,57 @@ const micBtn = document.getElementById('mic-btn');
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognizing = false;
 
-if (SpeechRecognition) {
+if (!window.isSecureContext) {
+  micBtn.disabled = true;
+  micBtn.title = '語音輸入需要 https 網址（GitHub Pages 部署後即可使用）';
+} else if (SpeechRecognition) {
   const recognition = new SpeechRecognition();
   recognition.lang = 'zh-TW';
   recognition.interimResults = false;
   recognition.maxAlternatives = 1;
 
-  micBtn.addEventListener('click', () => {
+  micBtn.addEventListener('click', async () => {
     if (recognizing) { recognition.stop(); return; }
-    recognition.start();
+
+    // 有些手機瀏覽器不會主動跳出麥克風權限視窗，
+    // 這裡先明確呼叫 getUserMedia 強制觸發系統的權限詢問。
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        stream.getTracks().forEach(t => t.stop()); // 拿到權限後立刻釋放，不需要一直佔用麥克風
+      } catch (err) {
+        alert(
+          '無法使用麥克風：' + (err.name || err.message) + '\n\n' +
+          '請檢查：\n' +
+          '1. 瀏覽器網址列旁是否有被封鎖的麥克風圖示，點開改成允許\n' +
+          '2. 手機系統設定 → App 權限 → 瀏覽器 → 麥克風，確認已開啟\n' +
+          '3. 確認網址是 https 開頭'
+        );
+        return;
+      }
+    }
+
+    try {
+      recognition.start();
+    } catch (err) {
+      alert('語音輸入啟動失敗：' + err.message);
+    }
   });
   recognition.onstart = () => { recognizing = true; micBtn.classList.add('listening'); };
   recognition.onend = () => { recognizing = false; micBtn.classList.remove('listening'); };
-  recognition.onerror = () => { recognizing = false; micBtn.classList.remove('listening'); };
+  recognition.onerror = (event) => {
+    recognizing = false;
+    micBtn.classList.remove('listening');
+    const reasons = {
+      'not-allowed': '麥克風權限被拒絕，請到瀏覽器設定允許後再試一次',
+      'service-not-allowed': '此瀏覽器不允許使用語音服務',
+      'no-speech': '沒有偵測到聲音，請再試一次',
+      'audio-capture': '找不到麥克風裝置'
+    };
+    if (event.error && event.error !== 'no-speech') {
+      alert(reasons[event.error] || ('語音辨識發生錯誤：' + event.error));
+    }
+  };
   recognition.onresult = (event) => {
     const text = event.results[0][0].transcript;
     document.getElementById('yt-query').value = text;
@@ -232,7 +277,7 @@ if (SpeechRecognition) {
   };
 } else {
   micBtn.disabled = true;
-  micBtn.title = '此瀏覽器不支援語音輸入';
+  micBtn.title = '此瀏覽器不支援語音輸入，建議用手機版 Chrome';
 }
 
 // ---------- YouTube 搜尋 ----------
@@ -273,7 +318,7 @@ async function doYouTubeSearch(query) {
       `;
       div.querySelector('button').addEventListener('click', async () => {
         await addSongFromUrl(`https://www.youtube.com/watch?v=${item.videoId}`, item.title, item.artist);
-        tabbar.querySelector('[data-tab="queue"]').click();
+        document.querySelector('.queue-panel').scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
       resultsEl.appendChild(div);
     });
@@ -288,6 +333,17 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// ---------- 點歌王全螢幕瀏覽 ----------
+document.getElementById('site-fullscreen-btn').addEventListener('click', () => {
+  const iframe = document.getElementById('site-iframe');
+  const req = iframe.requestFullscreen || iframe.webkitRequestFullscreen || iframe.webkitEnterFullscreen;
+  if (req) {
+    req.call(iframe);
+  } else {
+    window.open('https://song.corp.com.tw', '_blank');
+  }
+});
+
 // ---------- 待播清單即時渲染 ----------
 let currentQueue = [];
 let currentState = {};
@@ -299,18 +355,19 @@ function renderQueue() {
     return;
   }
   el.innerHTML = '';
-  currentQueue.forEach((song, idx) => {
+  currentQueue.forEach((song) => {
     const isNow = song.id === currentState.currentId;
+    const isPlayed = song.status === 'played' && !isNow;
     const div = document.createElement('div');
-    div.className = 'queue-item' + (isNow ? ' now' : '');
+    div.className = 'queue-item' + (isNow ? ' now' : '') + (isPlayed ? ' played' : '');
     div.innerHTML = `
       <img class="thumb" src="${song.thumb || ''}" onerror="this.style.visibility='hidden'" />
       <div class="meta">
-        <div class="title">${isNow ? '🎙️ ' : ''}${escapeHtml(song.title)}</div>
+        <div class="title">${isNow ? '🎙️ ' : (isPlayed ? '✅ ' : '')}${escapeHtml(song.title)}</div>
         <div class="artist">${escapeHtml(song.artist || '未知')}</div>
       </div>
       <div class="actions">
-        ${isNow ? '' : '<button data-act="play" title="插播">▶</button>'}
+        ${isNow ? '' : `<button data-act="play" title="${isPlayed ? '重唱' : '插播'}">${isPlayed ? '🔁' : '▶'}</button>`}
         <button data-act="remove" title="刪除">✕</button>
       </div>
     `;
@@ -331,11 +388,13 @@ function renderNowPlaying() {
     bar.style.display = 'none';
     document.getElementById('btn-playpause').disabled = true;
     document.getElementById('btn-next').disabled = true;
+    document.getElementById('btn-repeat').disabled = true;
     return;
   }
   bar.style.display = 'flex';
   document.getElementById('btn-playpause').disabled = false;
   document.getElementById('btn-next').disabled = false;
+  document.getElementById('btn-repeat').disabled = false;
   document.getElementById('now-thumb').src = song.thumb || '';
   document.getElementById('now-title').textContent = song.title;
   document.getElementById('now-artist').textContent = song.artist || '未知';
@@ -348,11 +407,15 @@ document.getElementById('btn-playpause').addEventListener('click', () => {
 document.getElementById('btn-next').addEventListener('click', () => {
   WKTV.playNext();
 });
+document.getElementById('btn-repeat').addEventListener('click', () => {
+  WKTV.restartCurrent();
+});
 
-// 若目前沒有正在播放的歌，佇列一有新歌就自動開播第一首
+// 若目前沒有正在播放的歌，佇列一有「還沒播過」的新歌就自動開播
 WKTV.onQueueChange((list) => {
-  if (!currentState.currentId && list.length) {
-    WKTV.setState({ currentId: list[0].id, isPlaying: true });
+  if (!currentState.currentId) {
+    const firstPending = list.find(s => s.status !== 'played');
+    if (firstPending) WKTV.setState({ currentId: firstPending.id, isPlaying: true, restartToken: Date.now() });
   }
 });
 </script>

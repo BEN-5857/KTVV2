@@ -15,6 +15,20 @@
     box-shadow: 0 0 40px rgba(255,47,160,0.08);
   }
   #yt-player, .ext-frame{ width:100%; height:100%; border:0; }
+  .unmute-overlay{
+    position:absolute; left:50%; bottom:24px; transform: translateX(-50%);
+    z-index: 5;
+    display:flex; align-items:center; gap:10px;
+    background: rgba(255,47,160,0.95);
+    color:#fff; font-weight:900; font-size:18px;
+    padding: 14px 26px; border-radius: 999px; border:none; cursor:pointer;
+    box-shadow: 0 6px 24px rgba(255,47,160,0.4);
+    animation: unmute-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes unmute-pulse{
+    0%,100%{ transform: translateX(-50%) scale(1); }
+    50%{ transform: translateX(-50%) scale(1.05); }
+  }
   .idle-screen{
     position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
     background: radial-gradient(ellipse at center, #1a1840 0%, #08071a 100%);
@@ -50,6 +64,7 @@
         <div class="eq" style="margin-top:14px;"><span></span><span></span><span></span><span></span></div>
       </div>
       <div id="yt-player" style="display:none;"></div>
+      <button class="unmute-overlay" id="unmute-btn" style="display:none;">🔊 點我開啟聲音</button>
       <iframe class="ext-frame" id="ext-frame" style="display:none;"></iframe>
     </div>
 
@@ -82,18 +97,28 @@ let ytPlayer = null;
 let ytReady = false;
 let currentLoadedVideoId = null;
 let currentLoadedExtUrl = null;
+let lastRestartToken = null;
+let audioUnlocked = false; // 使用者是否已按過「開啟聲音」
 
 // ---------- YouTube IFrame API ----------
 function onYouTubeIframeAPIReady() {
   ytPlayer = new YT.Player('yt-player', {
     height: '100%', width: '100%',
-    playerVars: { autoplay: 1, rel: 0, playsinline: 1 },
+    playerVars: { autoplay: 1, mute: 1, rel: 0, playsinline: 1 },
     events: {
       onReady: () => { ytReady = true; render(); },
       onStateChange: onPlayerStateChange
     }
   });
 }
+
+document.getElementById('unmute-btn').addEventListener('click', () => {
+  if (!ytPlayer) return;
+  ytPlayer.unMute();
+  ytPlayer.playVideo();
+  audioUnlocked = true;
+  document.getElementById('unmute-btn').style.display = 'none';
+});
 
 function onPlayerStateChange(e) {
   if (e.data === YT.PlayerState.ENDED) {
@@ -112,6 +137,7 @@ function render() {
   const ytBox = document.getElementById('yt-player');
   const extFrame = document.getElementById('ext-frame');
   const nowBar = document.getElementById('now-bar');
+  const unmuteBtn = document.getElementById('unmute-btn');
 
   const song = currentQueue.find(s => s.id === currentState.currentId);
 
@@ -120,6 +146,7 @@ function render() {
     ytBox.style.display = 'none';
     extFrame.style.display = 'none';
     nowBar.style.display = 'none';
+    unmuteBtn.style.display = 'none';
     currentLoadedVideoId = null;
     currentLoadedExtUrl = null;
     return;
@@ -134,15 +161,25 @@ function render() {
   if (song.type === 'youtube' && ytReady) {
     ytBox.style.display = 'block';
     extFrame.style.display = 'none';
-    if (currentLoadedVideoId !== song.videoId) {
+    const isSameVideo = currentLoadedVideoId === song.videoId;
+    if (!isSameVideo) {
+      // 影片一律先靜音載入，靜音的自動播放在所有瀏覽器都被允許，
+      // 確保「第一首歌自動開始播放」，聲音則靠下方按鈕一次性解鎖。
+      if (!audioUnlocked) ytPlayer.mute();
       ytPlayer.loadVideoById(song.videoId);
       currentLoadedVideoId = song.videoId;
       currentLoadedExtUrl = null;
+    } else if (lastRestartToken !== null && currentState.restartToken !== lastRestartToken) {
+      ytPlayer.seekTo(0, true);
+      ytPlayer.playVideo();
     }
+    lastRestartToken = currentState.restartToken;
     if (currentState.isPlaying) ytPlayer.playVideo(); else ytPlayer.pauseVideo();
+    unmuteBtn.style.display = audioUnlocked ? 'none' : 'flex';
   } else if (song.type === 'external') {
     ytBox.style.display = 'none';
     extFrame.style.display = 'block';
+    unmuteBtn.style.display = 'none';
     if (currentLoadedExtUrl !== song.url) {
       extFrame.src = song.url;
       currentLoadedExtUrl = song.url;
@@ -160,12 +197,13 @@ function renderSideList() {
   el.innerHTML = '';
   currentQueue.forEach((song) => {
     const isNow = song.id === currentState.currentId;
+    const isPlayed = song.status === 'played' && !isNow;
     const div = document.createElement('div');
-    div.className = 'queue-item' + (isNow ? ' now' : '');
+    div.className = 'queue-item' + (isNow ? ' now' : '') + (isPlayed ? ' played' : '');
     div.innerHTML = `
       <img class="thumb" src="${song.thumb || ''}" onerror="this.style.visibility='hidden'" />
       <div class="meta">
-        <div class="title">${isNow ? '🎙️ ' : ''}${escapeHtml(song.title)}</div>
+        <div class="title">${isNow ? '🎙️ ' : (isPlayed ? '✅ ' : '')}${escapeHtml(song.title)}</div>
         <div class="artist">${escapeHtml(song.artist || '未知')}</div>
       </div>
     `;

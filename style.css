@@ -127,6 +127,10 @@ input[type=text]:focus, textarea:focus{
   border-color: var(--magenta);
   box-shadow: 0 0 0 1px var(--magenta), 0 0 16px rgba(255,47,160,0.25);
 }
+.queue-item.played{
+  opacity: 0.55;
+}
+.queue-item.played .title{ color: var(--text-dim); }
 .queue-item .thumb{
   width:56px; height:40px; border-radius:8px; object-fit:cover;
   background: #000; flex-shrink:0;

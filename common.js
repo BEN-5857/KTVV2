@@ -49,7 +49,7 @@
   WKTV.addSong = function (song) {
     const newRef = queueRef.push();
     const item = Object.assign(
-      { id: newRef.key, addedAt: Date.now() },
+      { id: newRef.key, addedAt: Date.now(), status: "pending", playedAt: null },
       song
     );
     return newRef.set(item).then(() => item);
@@ -85,7 +85,8 @@
     stateRef.on("value", (snap) => cb(snap.val() || {}));
   };
 
-  // 播完/切歌：把目前這首從佇列移除，並把 currentId 指向下一首（若有）
+  // 播完/切歌：把目前這首標記為「已播放」（保留在清單中，不刪除），
+  // 從目前位置之後找下一首「還沒播放」的歌繼續播放
   WKTV.playNext = async function () {
     const snap = await queueRef.once("value");
     const val = snap.val() || {};
@@ -94,18 +95,30 @@
     const state = stateSnap.val() || {};
     const curIdx = list.findIndex((s) => s.id === state.currentId);
 
-    // 移除目前這首（已唱完）
     if (curIdx >= 0) {
-      await queueRef.child(list[curIdx].id).remove();
-      list.splice(curIdx, 1);
+      await queueRef.child(list[curIdx].id).update({ status: "played", playedAt: Date.now() });
+      list[curIdx].status = "played";
     }
-    const next = list[0];
-    return WKTV.setState({ currentId: next ? next.id : null, isPlaying: !!next });
+
+    let next = null;
+    for (let i = curIdx + 1; i < list.length; i++) {
+      if (list[i].status !== "played") { next = list[i]; break; }
+    }
+    return WKTV.setState({
+      currentId: next ? next.id : null,
+      isPlaying: !!next,
+      restartToken: Date.now()
+    });
   };
 
-  // 手動指定播放某首（點清單中的「插播」）
+  // 手動指定播放某首（插播 / 挑選之前唱過的歌重唱）
   WKTV.playSongNow = function (id) {
-    return WKTV.setState({ currentId: id, isPlaying: true });
+    return WKTV.setState({ currentId: id, isPlaying: true, restartToken: Date.now() });
+  };
+
+  // 重唱目前這首（從頭播放，不切歌）
+  WKTV.restartCurrent = function () {
+    return WKTV.setState({ restartToken: Date.now(), isPlaying: true });
   };
 
   // ---------- YouTube 搜尋（有金鑰才可用） ----------
