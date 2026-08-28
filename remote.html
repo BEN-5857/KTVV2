@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-<title>點歌遙控器｜Web-KTV-Cast</title>
+<title>點唱機KTVV2</title>
 <link rel="stylesheet" href="style.css" />
 <style>
-  .wrap{ max-width: 480px; margin:0 auto; padding: 16px 14px 90px; }
+  .wrap{ max-width: 480px; margin:0 auto; padding: 16px 14px 200px; }
   header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
   header h1{ font-size:18px; margin:0; }
   .panel{ display:none; }
@@ -38,8 +38,8 @@
   .now-playing .meta{ flex:1; min-width:0; }
   .now-playing .meta .t{ font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .now-playing .meta .a{ font-size:11px; color:var(--text-dim); }
-  .controls{ display:flex; gap:8px; }
-  .controls .btn{ flex:1; padding:12px 8px; font-size:13px; }
+  .controls{ display:flex; gap:6px; }
+  .controls .btn{ flex:1; padding:12px 4px; font-size:12px; white-space:nowrap; }
   .hint{ font-size:12px; color:var(--text-dim); line-height:1.6; }
   .site-embed{ margin-top:10px; }
   iframe.point-song{ width:100%; height:62vh; min-height:420px; border:1px solid var(--line); border-radius:12px; }
@@ -49,7 +49,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1 class="neon-title" style="font-size:20px;">🎤 點歌</h1>
+    <h1 class="neon-title" style="font-size:20px;">🎤 點唱機KTVV2</h1>
     <span class="tag ext" id="room-tag"></span>
   </header>
 
@@ -123,7 +123,7 @@
   <div class="controls">
     <button class="btn ghost" id="btn-playpause">⏸ 暫停</button>
     <button class="btn gold" id="btn-repeat">🔁 重唱</button>
-    <button class="btn magenta" id="btn-next">⏭ 下一首</button>
+    <button class="btn magenta" id="btn-next">⏭ 切歌</button>
   </div>
 </div>
 
