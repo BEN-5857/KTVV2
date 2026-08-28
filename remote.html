@@ -88,9 +88,14 @@
 
   <!-- 常駐待播清單（不會被歌單分頁遮住，含已唱過的歷史紀錄） -->
   <div class="card queue-panel" style="margin-top:14px;">
-    <div class="section-title" style="margin-top:0; display:flex; justify-content:space-between; align-items:center;">
-      <span>📋 待播 / 播放紀錄</span>
-      <span class="hint" style="margin:0;">已唱過的歌會保留，可點選重唱</span>
+    <div class="section-title" style="margin-top:0;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <span>📋 待播 / 播放紀錄</span>
+        <div style="display:flex; gap:6px;">
+          <button class="btn ghost" id="clear-played-btn" style="padding:6px 10px; font-size:11px;">清除已唱</button>
+          <button class="btn ghost" id="clear-all-btn" style="padding:6px 10px; font-size:11px; color:var(--magenta); border-color:var(--magenta);">清空全部</button>
+        </div>
+      </div>
     </div>
     <div id="queue-list" style="max-height:280px; overflow-y:auto; padding-right:4px;"></div>
   </div>
@@ -409,6 +414,22 @@ document.getElementById('btn-next').addEventListener('click', () => {
 });
 document.getElementById('btn-repeat').addEventListener('click', () => {
   WKTV.restartCurrent();
+});
+
+document.getElementById('clear-played-btn').addEventListener('click', () => {
+  if (!currentQueue.some(s => s.status === 'played')) {
+    alert('目前沒有已唱過的歌可以清除');
+    return;
+  }
+  if (confirm('確定要清除所有已唱過的歌曲紀錄嗎？還沒唱的歌不會受影響。')) {
+    WKTV.clearPlayed();
+  }
+});
+
+document.getElementById('clear-all-btn').addEventListener('click', () => {
+  if (confirm('確定要清空「整份」歌單嗎？包含待播與已唱的都會被刪除，這個動作無法復原。')) {
+    WKTV.clearAll();
+  }
 });
 
 // 若目前沒有正在播放的歌，佇列一有「還沒播過」的新歌就自動開播

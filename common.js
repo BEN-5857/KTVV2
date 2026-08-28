@@ -121,6 +121,22 @@
     return WKTV.setState({ restartToken: Date.now(), isPlaying: true });
   };
 
+  // 只清掉「已經唱過」的歷史紀錄，保留還沒唱的歌，避免清單越積越長
+  WKTV.clearPlayed = async function () {
+    const snap = await queueRef.once("value");
+    const val = snap.val() || {};
+    const updates = {};
+    Object.keys(val).forEach((id) => {
+      if (val[id].status === "played") updates[id] = null;
+    });
+    return queueRef.update(updates);
+  };
+
+  // 清空整份歌單並重置播放狀態，重新開始一場新的 KTV
+  WKTV.clearAll = function () {
+    return Promise.all([queueRef.remove(), stateRef.remove()]);
+  };
+
   // ---------- YouTube 搜尋（有金鑰才可用） ----------
   WKTV.hasYouTubeSearch = !!CFG.YOUTUBE_API_KEY;
 
