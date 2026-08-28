@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Web-KTV-Cast｜家庭點歌系統</title>
+<link rel="stylesheet" href="style.css" />
+<style>
+  .wrap{ max-width: 640px; margin: 0 auto; padding: 32px 20px 60px; }
+  .hero{ text-align:center; padding: 28px 0 20px; }
+  .hero h1{ font-size: 26px; margin: 12px 0 6px; }
+  .hero p{ color: var(--text-dim); font-size: 14px; }
+  .nav-cards{ display:grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 24px 0; }
+  .nav-card{ text-decoration:none; color:var(--text); text-align:center; padding: 26px 10px; }
+  .nav-card .big{ font-size: 34px; display:block; margin-bottom:8px; }
+  .nav-card h3{ margin: 4px 0; font-size:16px; }
+  .nav-card p{ margin:0; font-size:12px; color:var(--text-dim); }
+  .steps li{ margin-bottom: 10px; line-height:1.6; font-size:14px; }
+  .steps b{ color: var(--gold); }
+  .warn{ border-color: var(--magenta); }
+  code{ background:var(--bg-card-2); padding:2px 6px; border-radius:6px; font-size:13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <div class="eq"><span></span><span></span><span></span><span></span></div>
+    <h1 class="neon-title">Web-KTV-Cast</h1>
+    <p>手機當點歌遙控器・電視播伴唱・全家一起唱</p>
+  </div>
+
+  <div class="nav-cards">
+    <a class="card nav-card" href="remote.html">
+      <span class="big">📱</span>
+      <h3>點歌遙控器</h3>
+      <p>手機 / 平板打開這頁</p>
+    </a>
+    <a class="card nav-card" href="tv.html">
+      <span class="big">📺</span>
+      <h3>電視播放端</h3>
+      <p>Google 電視盒打開這頁</p>
+    </a>
+  </div>
+
+  <div class="card" id="status-card" style="margin-bottom:14px;">
+    <b>設定狀態檢查</b>
+    <div id="status-list" style="margin-top:10px; font-size:14px;"></div>
+  </div>
+
+  <div class="card">
+    <b>快速上手（每台裝置都只需做一次）</b>
+    <ol class="steps">
+      <li>在電視盒的 <b>TV Bro</b> 瀏覽器打開本網站的 <code>tv.html</code>，並釘選在首頁方便下次開啟。</li>
+      <li>手機 / 平板打開 <code>remote.html</code>，之後可以「加入主畫面」變成一個 App 圖示。</li>
+      <li>點歌方式二選一：① 語音或文字搜尋 YouTube ② 打開「台灣點歌王」找到歌曲後複製網址，回來按「貼上並加入」。</li>
+      <li>歌單會即時同步到電視，播完自動接下一首，也能在手機上切歌、暫停、刪歌、插播。</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+(async function(){
+  const list = document.getElementById('status-list');
+  const cfg = window.WKTV_CONFIG || {};
+  const fb = cfg.FIREBASE_CONFIG || {};
+  const items = [];
+
+  const fbOk = fb.apiKey && fb.apiKey !== "REPLACE_ME" && fb.databaseURL;
+  items.push({
+    ok: fbOk,
+    label: fbOk ? "Firebase 已設定，可跨裝置同步" : "尚未設定 Firebase（必要）→ 編輯 config.js"
+  });
+
+  const ytOk = !!cfg.YOUTUBE_API_KEY;
+  items.push({
+    ok: true,
+    label: ytOk ? "已啟用 YouTube 搜尋（可直接搜尋加歌）" : "未設定 YouTube API 金鑰（選填）→ 搜尋時會改開新分頁"
+  });
+
+  list.innerHTML = items.map(i =>
+    `<div style="margin-bottom:6px;">${i.ok ? '✅' : '⚠️'} ${i.label}</div>`
+  ).join('');
+})();
+</script>
+</body>
+</html>

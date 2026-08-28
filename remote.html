@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>點歌遙控器｜Web-KTV-Cast</title>
+<link rel="stylesheet" href="style.css" />
+<style>
+  .wrap{ max-width: 480px; margin:0 auto; padding: 16px 14px 90px; }
+  header{ display:flex; align-items:center; justify-content:space-between; margin-bottom:14px; }
+  header h1{ font-size:18px; margin:0; }
+  .panel{ display:none; }
+  .panel.active{ display:block; }
+  .search-row{ display:flex; gap:8px; margin-bottom:10px; }
+  .search-row input{ flex:1; }
+  .mic-btn{ flex-shrink:0; }
+  .mic-btn.listening{ animation: pulse 1s infinite; }
+  @keyframes pulse{ 0%,100%{ box-shadow:0 0 0 0 rgba(255,47,160,0.5);} 50%{ box-shadow:0 0 0 10px rgba(255,47,160,0);} }
+  .yt-result{ display:flex; gap:10px; padding:8px; border-radius:12px; border:1px solid var(--line); margin-bottom:8px; align-items:center; }
+  .yt-result img{ width:80px; height:45px; border-radius:8px; object-fit:cover; }
+  .yt-result .meta{ flex:1; min-width:0; }
+  .yt-result .meta .t{ font-size:13px; font-weight:700; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+  .yt-result .meta .a{ font-size:11px; color:var(--text-dim); }
+  .yt-result button{ flex-shrink:0; }
+  .section-title{ font-size:13px; color:var(--text-dim); font-weight:700; margin: 18px 0 8px; }
+  .paste-row{ display:flex; gap:8px; margin-top:10px; }
+  .field-row{ display:flex; gap:8px; margin-top:8px; }
+  .field-row input{ flex:1; }
+  .add-box{ margin-top:12px; }
+  .bottom-bar{
+    position:fixed; left:0; right:0; bottom:0;
+    background: rgba(11,11,30,0.92); backdrop-filter: blur(8px);
+    border-top:1px solid var(--line);
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+  }
+  .now-playing{ display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .now-playing img{ width:44px; height:44px; border-radius:10px; object-fit:cover; background:#000; }
+  .now-playing .meta{ flex:1; min-width:0; }
+  .now-playing .meta .t{ font-size:13px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .now-playing .meta .a{ font-size:11px; color:var(--text-dim); }
+  .controls{ display:flex; gap:8px; }
+  .controls .btn{ flex:1; padding:12px 8px; font-size:13px; }
+  .hint{ font-size:12px; color:var(--text-dim); line-height:1.6; }
+  .site-embed{ margin-top:10px; }
+  iframe.point-song{ width:100%; height:340px; border:1px solid var(--line); border-radius:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 class="neon-title" style="font-size:20px;">🎤 點歌</h1>
+    <span class="tag ext" id="room-tag"></span>
+  </header>
+
+  <div class="tabbar" id="tabbar">
+    <button data-tab="search" class="active">🔍 找歌</button>
+    <button data-tab="site">🎶 點歌王</button>
+    <button data-tab="queue">📋 待播清單</button>
+  </div>
+
+  <!-- 搜尋 YouTube -->
+  <div class="panel active" id="panel-search">
+    <div class="section-title">語音 / 文字搜尋 YouTube</div>
+    <div class="search-row">
+      <input type="text" id="yt-query" placeholder="輸入歌名或歌手…" />
+      <button class="btn magenta icon mic-btn" id="mic-btn" title="語音搜尋">🎙️</button>
+    </div>
+    <button class="btn" id="yt-search-btn" style="width:100%;">搜尋</button>
+    <div id="yt-results" style="margin-top:14px;"></div>
+    <div id="yt-fallback-hint" class="hint" style="margin-top:10px; display:none;">
+      尚未設定 YouTube API 金鑰，已改為幫你開啟 YouTube 搜尋分頁。找到影片後，複製網址回來貼在下面：
+    </div>
+  </div>
+
+  <!-- 台灣點歌王 -->
+  <div class="panel" id="panel-site">
+    <div class="section-title">台灣點歌王</div>
+    <p class="hint">直接查詢最新歌單；找到想唱的歌後，用它的「分享」功能複製歌曲網址，回來貼上加入待播清單。</p>
+    <a class="btn" style="width:100%;" href="https://song.corp.com.tw" target="_blank" rel="noopener">開啟台灣點歌王（新分頁）</a>
+    <div class="site-embed">
+      <iframe class="point-song" src="https://song.corp.com.tw" loading="lazy"></iframe>
+      <p class="hint">＊若上方空白，代表該網站不允許嵌入，請改用上面的按鈕開新分頁瀏覽。</p>
+    </div>
+  </div>
+
+  <!-- 待播清單 -->
+  <div class="panel" id="panel-queue">
+    <div class="section-title">待播清單</div>
+    <div id="queue-list"></div>
+  </div>
+
+  <!-- 手動貼上加入 -->
+  <div class="card add-box">
+    <div class="section-title" style="margin-top:0;">貼上網址加入歌單</div>
+    <div class="paste-row">
+      <input type="text" id="paste-url" placeholder="貼上 YouTube 或點歌王的歌曲網址" />
+      <button class="btn gold" id="paste-btn">📋 貼上</button>
+    </div>
+    <div class="field-row">
+      <input type="text" id="manual-title" placeholder="歌名（YouTube 會自動帶入，可修改）" />
+    </div>
+    <div class="field-row">
+      <input type="text" id="manual-artist" placeholder="歌手 / 演唱者" />
+    </div>
+    <button class="btn magenta" id="add-btn" style="width:100%; margin-top:10px;">➕ 加入待播清單</button>
+  </div>
+</div>
+
+<div class="bottom-bar">
+  <div class="now-playing" id="now-playing" style="display:none;">
+    <img id="now-thumb" src="" />
+    <div class="meta">
+      <div class="t" id="now-title">—</div>
+      <div class="a" id="now-artist">—</div>
+    </div>
+  </div>
+  <div class="controls">
+    <button class="btn ghost" id="btn-playpause">⏸ 暫停</button>
+    <button class="btn magenta" id="btn-next">⏭ 下一首</button>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="config.js"></script>
+<script src="common.js"></script>
+<script>
+document.getElementById('room-tag').textContent = 'Room: ' + (window.WKTV_CONFIG.ROOM_ID || 'home-ktv');
+
+// ---------- Tabs ----------
+const tabbar = document.getElementById('tabbar');
+tabbar.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-tab]');
+  if (!btn) return;
+  [...tabbar.children].forEach(b => b.classList.toggle('active', b === btn));
+  ['search','site','queue'].forEach(name => {
+    document.getElementById('panel-' + name).classList.toggle('active', name === btn.dataset.tab);
+  });
+});
+
+// ---------- 加入歌曲共用邏輯 ----------
+async function addSongFromUrl(url, titleOverride, artistOverride) {
+  const videoId = WKTV.parseYouTubeId(url);
+  let song;
+  if (videoId) {
+    let meta = { title: titleOverride, artist: artistOverride };
+    if (!meta.title) {
+      const fetched = await WKTV.fetchYouTubeMeta(videoId);
+      meta.title = fetched.title || '未命名歌曲';
+      meta.artist = meta.artist || fetched.artist || '';
+    }
+    song = {
+      type: 'youtube',
+      videoId,
+      url,
+      title: meta.title,
+      artist: meta.artist || '',
+      thumb: `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`
+    };
+  } else {
+    song = {
+      type: 'external',
+      videoId: null,
+      url,
+      title: titleOverride || '點歌王歌曲',
+      artist: artistOverride || '',
+      thumb: ''
+    };
+  }
+  await WKTV.addSong(song);
+  return song;
+}
+
+document.getElementById('add-btn').addEventListener('click', async () => {
+  const url = document.getElementById('paste-url').value.trim();
+  if (!url) { alert('請先貼上網址'); return; }
+  const title = document.getElementById('manual-title').value.trim();
+  const artist = document.getElementById('manual-artist').value.trim();
+  const btn = document.getElementById('add-btn');
+  btn.disabled = true; btn.textContent = '加入中…';
+  try {
+    await addSongFromUrl(url, title, artist);
+    document.getElementById('paste-url').value = '';
+    document.getElementById('manual-title').value = '';
+    document.getElementById('manual-artist').value = '';
+    tabbar.querySelector('[data-tab="queue"]').click();
+  } catch (e) {
+    alert('加入失敗：' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '➕ 加入待播清單';
+  }
+});
+
+// ---------- 一鍵貼上（處理手機瀏覽器剪貼簿限制） ----------
+document.getElementById('paste-btn').addEventListener('click', async () => {
+  try {
+    const text = await navigator.clipboard.readText();
+    if (text) {
+      document.getElementById('paste-url').value = text.trim();
+    } else {
+      alert('剪貼簿是空的，請先在點歌王或 YouTube 複製歌曲網址');
+    }
+  } catch (e) {
+    // 手機瀏覽器常見限制：改用可編輯欄位讓使用者長按貼上
+    document.getElementById('paste-url').focus();
+    alert('無法自動讀取剪貼簿，請在上方欄位長按「貼上」');
+  }
+});
+
+// ---------- 語音搜尋 ----------
+const micBtn = document.getElementById('mic-btn');
+const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recognizing = false;
+
+if (SpeechRecognition) {
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'zh-TW';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  micBtn.addEventListener('click', () => {
+    if (recognizing) { recognition.stop(); return; }
+    recognition.start();
+  });
+  recognition.onstart = () => { recognizing = true; micBtn.classList.add('listening'); };
+  recognition.onend = () => { recognizing = false; micBtn.classList.remove('listening'); };
+  recognition.onerror = () => { recognizing = false; micBtn.classList.remove('listening'); };
+  recognition.onresult = (event) => {
+    const text = event.results[0][0].transcript;
+    document.getElementById('yt-query').value = text;
+    doYouTubeSearch(text);
+  };
+} else {
+  micBtn.disabled = true;
+  micBtn.title = '此瀏覽器不支援語音輸入';
+}
+
+// ---------- YouTube 搜尋 ----------
+document.getElementById('yt-search-btn').addEventListener('click', () => {
+  const q = document.getElementById('yt-query').value.trim();
+  if (q) doYouTubeSearch(q);
+});
+document.getElementById('yt-query').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') document.getElementById('yt-search-btn').click();
+});
+
+async function doYouTubeSearch(query) {
+  const resultsEl = document.getElementById('yt-results');
+  const fallbackHint = document.getElementById('yt-fallback-hint');
+
+  if (!WKTV.hasYouTubeSearch) {
+    fallbackHint.style.display = 'block';
+    window.open('https://m.youtube.com/results?search_query=' + encodeURIComponent(query), '_blank');
+    resultsEl.innerHTML = '';
+    return;
+  }
+  fallbackHint.style.display = 'none';
+  resultsEl.innerHTML = '<p class="hint">搜尋中…</p>';
+  try {
+    const items = await WKTV.searchYouTube(query);
+    if (!items.length) { resultsEl.innerHTML = '<p class="hint">找不到結果</p>'; return; }
+    resultsEl.innerHTML = '';
+    items.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'yt-result';
+      div.innerHTML = `
+        <img src="${item.thumb}" />
+        <div class="meta">
+          <div class="t">${escapeHtml(item.title)}</div>
+          <div class="a">${escapeHtml(item.artist)}</div>
+        </div>
+        <button class="btn icon" style="width:40px;height:40px;font-size:16px;">➕</button>
+      `;
+      div.querySelector('button').addEventListener('click', async () => {
+        await addSongFromUrl(`https://www.youtube.com/watch?v=${item.videoId}`, item.title, item.artist);
+        tabbar.querySelector('[data-tab="queue"]').click();
+      });
+      resultsEl.appendChild(div);
+    });
+  } catch (e) {
+    resultsEl.innerHTML = `<p class="hint">搜尋失敗：${escapeHtml(e.message)}</p>`;
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+// ---------- 待播清單即時渲染 ----------
+let currentQueue = [];
+let currentState = {};
+
+function renderQueue() {
+  const el = document.getElementById('queue-list');
+  if (!currentQueue.length) {
+    el.innerHTML = '<div class="empty-state">目前沒有排隊歌曲，快去點一首吧 🎵</div>';
+    return;
+  }
+  el.innerHTML = '';
+  currentQueue.forEach((song, idx) => {
+    const isNow = song.id === currentState.currentId;
+    const div = document.createElement('div');
+    div.className = 'queue-item' + (isNow ? ' now' : '');
+    div.innerHTML = `
+      <img class="thumb" src="${song.thumb || ''}" onerror="this.style.visibility='hidden'" />
+      <div class="meta">
+        <div class="title">${isNow ? '🎙️ ' : ''}${escapeHtml(song.title)}</div>
+        <div class="artist">${escapeHtml(song.artist || '未知')}</div>
+      </div>
+      <div class="actions">
+        ${isNow ? '' : '<button data-act="play" title="插播">▶</button>'}
+        <button data-act="remove" title="刪除">✕</button>
+      </div>
+    `;
+    div.querySelector('[data-act="remove"]').addEventListener('click', () => WKTV.removeSong(song.id));
+    const playBtn = div.querySelector('[data-act="play"]');
+    if (playBtn) playBtn.addEventListener('click', () => WKTV.playSongNow(song.id));
+    el.appendChild(div);
+  });
+}
+
+WKTV.onQueueChange((list) => { currentQueue = list; renderQueue(); renderNowPlaying(); });
+WKTV.onStateChange((state) => { currentState = state; renderQueue(); renderNowPlaying(); });
+
+function renderNowPlaying() {
+  const bar = document.getElementById('now-playing');
+  const song = currentQueue.find(s => s.id === currentState.currentId);
+  if (!song) {
+    bar.style.display = 'none';
+    document.getElementById('btn-playpause').disabled = true;
+    document.getElementById('btn-next').disabled = true;
+    return;
+  }
+  bar.style.display = 'flex';
+  document.getElementById('btn-playpause').disabled = false;
+  document.getElementById('btn-next').disabled = false;
+  document.getElementById('now-thumb').src = song.thumb || '';
+  document.getElementById('now-title').textContent = song.title;
+  document.getElementById('now-artist').textContent = song.artist || '未知';
+  document.getElementById('btn-playpause').textContent = currentState.isPlaying ? '⏸ 暫停' : '▶ 播放';
+}
+
+document.getElementById('btn-playpause').addEventListener('click', () => {
+  WKTV.setState({ isPlaying: !currentState.isPlaying });
+});
+document.getElementById('btn-next').addEventListener('click', () => {
+  WKTV.playNext();
+});
+
+// 若目前沒有正在播放的歌，佇列一有新歌就自動開播第一首
+WKTV.onQueueChange((list) => {
+  if (!currentState.currentId && list.length) {
+    WKTV.setState({ currentId: list[0].id, isPlaying: true });
+  }
+});
+</script>
+</body>
+</html>

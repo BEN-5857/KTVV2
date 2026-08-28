@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>播放端｜Web-KTV-Cast</title>
+<link rel="stylesheet" href="style.css" />
+<style>
+  html,body{ height:100%; overflow:hidden; }
+  .stage{ display:flex; height:100vh; padding: 22px; gap:22px; }
+  .player-col{ flex: 1; display:flex; flex-direction:column; min-width:0; }
+  .player-box{
+    flex:1; background:#000; border-radius:20px; overflow:hidden; position:relative;
+    border: 1px solid var(--line);
+    box-shadow: 0 0 40px rgba(255,47,160,0.08);
+  }
+  #yt-player, .ext-frame{ width:100%; height:100%; border:0; }
+  .idle-screen{
+    position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background: radial-gradient(ellipse at center, #1a1840 0%, #08071a 100%);
+    text-align:center; padding: 20px;
+  }
+  .idle-screen .logo{ font-size: 42px; margin-bottom:10px; }
+  .idle-screen p{ color: var(--text-dim); margin-top:6px; }
+  .now-bar{
+    margin-top:16px; display:flex; align-items:center; gap:14px;
+    background: var(--bg-card); border:1px solid var(--line); border-radius:16px; padding: 14px 18px;
+  }
+  .now-bar .thumb{ width:64px; height:64px; border-radius:10px; object-fit:cover; background:#000; flex-shrink:0; }
+  .now-bar .meta{ flex:1; min-width:0; }
+  .now-bar .meta .t{ font-size: 22px; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .now-bar .meta .a{ font-size: 15px; color: var(--text-dim); }
+  .now-bar .eq{ height:22px; }
+  .now-bar .eq span{ width:5px; }
+
+  .side-col{ width: 320px; flex-shrink:0; display:flex; flex-direction:column; }
+  .side-col h2{ font-size:15px; color: var(--text-dim); margin: 0 0 10px; font-weight:700; }
+  .side-list{ flex:1; overflow-y:auto; padding-right:4px; }
+  .qr-hint{ margin-top:14px; text-align:center; font-size:12px; color:var(--text-dim); }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="player-col">
+    <div class="player-box" id="player-box">
+      <div class="idle-screen" id="idle-screen">
+        <div class="logo">🎤📺</div>
+        <div class="neon-title" style="font-size:28px;">Web-KTV-Cast</div>
+        <p>待播清單目前是空的，請用手機加入第一首歌</p>
+        <div class="eq" style="margin-top:14px;"><span></span><span></span><span></span><span></span></div>
+      </div>
+      <div id="yt-player" style="display:none;"></div>
+      <iframe class="ext-frame" id="ext-frame" style="display:none;"></iframe>
+    </div>
+
+    <div class="now-bar" id="now-bar" style="display:none;">
+      <img class="thumb" id="now-thumb" src="" />
+      <div class="meta">
+        <div class="t" id="now-title">—</div>
+        <div class="a" id="now-artist">—</div>
+      </div>
+      <div class="eq"><span></span><span></span><span></span><span></span></div>
+    </div>
+  </div>
+
+  <div class="side-col">
+    <h2>📋 待播清單</h2>
+    <div class="side-list" id="side-list"></div>
+    <div class="qr-hint">用手機打開 remote.html 繼續點歌</div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<script src="config.js"></script>
+<script src="common.js"></script>
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+let currentQueue = [];
+let currentState = {};
+let ytPlayer = null;
+let ytReady = false;
+let currentLoadedVideoId = null;
+let currentLoadedExtUrl = null;
+
+// ---------- YouTube IFrame API ----------
+function onYouTubeIframeAPIReady() {
+  ytPlayer = new YT.Player('yt-player', {
+    height: '100%', width: '100%',
+    playerVars: { autoplay: 1, rel: 0, playsinline: 1 },
+    events: {
+      onReady: () => { ytReady = true; render(); },
+      onStateChange: onPlayerStateChange
+    }
+  });
+}
+
+function onPlayerStateChange(e) {
+  if (e.data === YT.PlayerState.ENDED) {
+    WKTV.playNext();
+  }
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str || '';
+  return div.innerHTML;
+}
+
+function render() {
+  const idle = document.getElementById('idle-screen');
+  const ytBox = document.getElementById('yt-player');
+  const extFrame = document.getElementById('ext-frame');
+  const nowBar = document.getElementById('now-bar');
+
+  const song = currentQueue.find(s => s.id === currentState.currentId);
+
+  if (!song) {
+    idle.style.display = 'flex';
+    ytBox.style.display = 'none';
+    extFrame.style.display = 'none';
+    nowBar.style.display = 'none';
+    currentLoadedVideoId = null;
+    currentLoadedExtUrl = null;
+    return;
+  }
+
+  idle.style.display = 'none';
+  nowBar.style.display = 'flex';
+  document.getElementById('now-thumb').src = song.thumb || '';
+  document.getElementById('now-title').textContent = song.title;
+  document.getElementById('now-artist').textContent = song.artist || '未知';
+
+  if (song.type === 'youtube' && ytReady) {
+    ytBox.style.display = 'block';
+    extFrame.style.display = 'none';
+    if (currentLoadedVideoId !== song.videoId) {
+      ytPlayer.loadVideoById(song.videoId);
+      currentLoadedVideoId = song.videoId;
+      currentLoadedExtUrl = null;
+    }
+    if (currentState.isPlaying) ytPlayer.playVideo(); else ytPlayer.pauseVideo();
+  } else if (song.type === 'external') {
+    ytBox.style.display = 'none';
+    extFrame.style.display = 'block';
+    if (currentLoadedExtUrl !== song.url) {
+      extFrame.src = song.url;
+      currentLoadedExtUrl = song.url;
+      currentLoadedVideoId = null;
+    }
+  }
+}
+
+function renderSideList() {
+  const el = document.getElementById('side-list');
+  if (!currentQueue.length) {
+    el.innerHTML = '<div class="empty-state">尚無排隊歌曲</div>';
+    return;
+  }
+  el.innerHTML = '';
+  currentQueue.forEach((song) => {
+    const isNow = song.id === currentState.currentId;
+    const div = document.createElement('div');
+    div.className = 'queue-item' + (isNow ? ' now' : '');
+    div.innerHTML = `
+      <img class="thumb" src="${song.thumb || ''}" onerror="this.style.visibility='hidden'" />
+      <div class="meta">
+        <div class="title">${isNow ? '🎙️ ' : ''}${escapeHtml(song.title)}</div>
+        <div class="artist">${escapeHtml(song.artist || '未知')}</div>
+      </div>
+    `;
+    el.appendChild(div);
+  });
+}
+
+WKTV.onQueueChange((list) => { currentQueue = list; render(); renderSideList(); });
+WKTV.onStateChange((state) => { currentState = state; render(); renderSideList(); });
+</script>
+</body>
+</html>
